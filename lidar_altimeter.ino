@@ -1,3 +1,25 @@
+/*
+  lidar_altimeter
+
+  Monitors altitude using a LIDAR sensor attached via I2C bus and provides
+  callouts when certain altitudes are reached.
+
+   Parts based upon "speaker_pcm" (https://playground.arduino.cc/Code/PCMAudio):
+   Plays 8-bit PCM audio on pin 11 using pulse-width modulation (PWM).
+   For Arduino with Atmega168 at 16 MHz.
+   By Michael Smith <michael@hurts.ca>
+
+*/
+#include <Wire.h>
+#include <LIDARLite.h>
+
+#include <stdint.h>
+#include <avr/interrupt.h>
+#include <avr/io.h>
+#include <avr/pgmspace.h>
+
+#include <TimerOne.h>
+
 #include "1.h"
 #include "2.h"
 #include "3.h"
@@ -9,20 +31,23 @@
 #include "40.h"
 #include "50.h"
 //#include "100.h"
-#include <Wire.h>
-#include <LIDARLite.h>
-
-#include "TimerOne.h"
 
 LIDARLite myLidarLite;
 
-uint16_t audio_count = 0;
-uint16_t audio_len = 0;
-uint8_t *audio_data = NULL;
+volatile uint16_t audio_count = 0; // Current offset into sample
+uint16_t audio_len = 0; // Maximum offset until which we want to play back
+uint8_t *audio_data = NULL; // Pointer which to play from, assumed to be in FLASH
+unsigned int altitude; // Current altitude in centimeter
+byte announced_feet = 0; // Last announced altitude, used when determining if a callout is needed
 
+/* Feeds audio data from the pointers into the PWM module */ 
 void audio_callback() {
   audio_count = (audio_count + 1);
   if (audio_count >= audio_len) {
+    /* When nothing left to play, return to PWM level of 128,
+     * which is the idle level of unsigned eight bit audio.
+     * Reset the counters, too.
+     */
     audio_count = 0;
     audio_len = 0;
     if (OCR2B > 128)
@@ -33,7 +58,11 @@ void audio_callback() {
     OCR2B = pgm_read_byte(&audio_data[audio_count]);
 }
 
+/** Tries to say a number.
+ * If number is not available, just skip it.
+ */
 void say(byte number) {
+  
   switch (number) {
     case 1:
       audio_data = __1_u8;
@@ -84,109 +113,40 @@ void say(byte number) {
       audio_data = __50_u8;
       audio_len = __50_u8_len;
       break;
-    
-/*    case 100:
-      audio_data = __100_u8;
-      audio_len = __100_u8_len;
-      break;
+
+      /*    case 100:
+            audio_data = __100_u8;
+            audio_len = __100_u8_len;
+            break;
       */
   }
 }
 
-byte n = 0;;
-unsigned int altitude;
-byte announced_feet = 0;
 
 void loop() {
   delay(250);
-  altitude = (altitude + myLidarLite.distance()) >> 1;
-  /* If out of range, it returns 0. Disregard, then */
-  if (altitude == 0) 
-    return;
-  unsigned int feet = altitude;
-  feet *= 100;
-  feet /= 3048;
-  Serial.print(altitude);
-  Serial.print(" ");
-  Serial.println(feet);
-  if ((feet != announced_feet) && (audio_len==0))  {
-    say(feet);
-    announced_feet = feet;
+  // Get distance in cm
+  unsigned int distance = myLidarLite.distance();
+  /* If out of range, it returns very low distances. Disregard, then */
+  if (distance > 5)
+  {
+    altitude = (altitude + distance) >> 1;
+    unsigned int feet = altitude;
+    feet *= 100;
+    feet /= 3048;
+    Serial.print(altitude);
+    Serial.print(" ");
+    Serial.println(feet);
+    if ((feet != announced_feet) && (audio_len == 0))  {
+      say(feet);
+      announced_feet = feet;
+    }
   }
 }
 
-/*
-   speaker_pcm
-
-   Plays 8-bit PCM audio on pin 11 using pulse-width modulation (PWM).
-   For Arduino with Atmega168 at 16 MHz.
-
-   Uses two timers. The first changes the sample value 8000 times a second.
-   The second holds pin 11 high for 0-255 ticks out of a 256-tick cycle,
-   depending on sample value. The second timer repeats 62500 times per second
-   (16000000 / 256), much faster than the playback rate (8000 Hz), so
-   it almost sounds halfway decent, just really quiet on a PC speaker.
-
-   Takes over Timer 1 (16-bit) for the 8000 Hz timer. This breaks PWM
-   (analogWrite()) for Arduino pins 9 and 10. Takes Timer 2 (8-bit)
-   for the pulse width modulation, breaking PWM for pins 11 & 3.
-
-   References:
-       http://www.uchobby.com/index.php/2007/11/11/arduino-sound-part-1/
-       http://www.atmel.com/dyn/resources/prod_documents/doc2542.pdf
-       http://www.evilmadscientist.com/article.php/avrdac
-       http://gonium.net/md/2006/12/27/i-will-think-before-i-code/
-       http://fly.cc.fer.hr/GDM/articles/sndmus/speaker2.html
-       http://www.gamedev.net/reference/articles/article442.asp
-
-   Michael Smith <michael@hurts.ca>
-*/
-
-#include <stdint.h>
-#include <avr/interrupt.h>
-#include <avr/io.h>
-#include <avr/pgmspace.h>
-
-#define SAMPLE_RATE 8000
-
-
-volatile uint16_t sample;
-byte lastSample;
-
-
-void stopPlayback()
+void setup()
 {
-  // Disable playback per-sample interrupt.
-  TIMSK1 &= ~_BV(OCIE1A);
-
-  // Disable the per-sample timer completely.
-  TCCR1B &= ~_BV(CS10);
-
-  // Disable the PWM timer.
-  TCCR2B &= ~_BV(CS10);
-
-  digitalWrite(3, LOW);
-}
-
-// This is called at 8000 Hz to load the next sample.
-/*ISR(TIMER1_COMPA_vect) {
-    if (sample >= sounddata_length) {
-        if (sample == sounddata_length + lastSample) {
-            stopPlayback();
-        }
-        else {
-                OCR2B = sounddata_length + lastSample - sample;
-        }
-    }
-    else {
-            OCR2B = pgm_read_byte(&sounddata_data[sample]);
-    }
-
-    ++sample;
-  }*/
-
-void startPlayback()
-{
+  // Init PWM for sound output
   pinMode(3, OUTPUT);
 
   // Set up Timer 2 to do pulse width modulation on the speaker
@@ -206,51 +166,17 @@ void startPlayback()
   // No prescaler (p.158)
   TCCR2B = (TCCR2B & ~(_BV(CS12) | _BV(CS11))) | _BV(CS10);
 
-  // Set initial pulse width to the first sample.
-  //        OCR2B = pgm_read_byte(&sounddata_data[0]);
+  // Set up sound sample feeding timer interrupt.
 
+  audio_count = 0;
 
-
-  // Set up Timer 1 to send a sample every interrupt.
-  /*
-      cli();
-
-      // Set CTC mode (Clear Timer on Compare Match) (p.133)
-      // Have to set OCR1A *after*, otherwise it gets reset to 0!
-      TCCR1B = (TCCR1B & ~_BV(WGM13)) | _BV(WGM12);
-      TCCR1A = TCCR1A & ~(_BV(WGM11) | _BV(WGM10));
-
-      // No prescaler (p.134)
-      TCCR1B = (TCCR1B & ~(_BV(CS12) | _BV(CS11))) | _BV(CS10);
-
-      // Set the compare register (OCR1A).
-      // OCR1A is a 16-bit register, so we have to do this with
-      // interrupts disabled to be safe.
-      OCR1A = F_CPU / SAMPLE_RATE;    // 16e6 / 8000 = 2000
-
-      // Enable interrupt when TCNT1 == OCR1A (p.136)
-      TIMSK1 |= _BV(OCIE1A);
-
-      lastSample = pgm_read_byte(&sounddata_data[sounddata_length-1]);
-      sample = 0;
-      sei();
-  */
-}
-
-
-void setup()
-{
-  startPlayback();
-
-  // put your setup code here, to run once:
   Timer1.initialize(125 * 2);
   Timer1.attachInterrupt(audio_callback);
-  audio_count = 0;
+
   pinMode(3, OUTPUT);
-  pinMode(11, OUTPUT);
   Serial.begin(9600);
-  myLidarLite.begin(0, true); // Set configuration to default and I2C to 400 kHz
-    /*
+  myLidarLite.begin(3, true); // Set configuration to default and I2C to 400 kHz
+  /*
     configure(int configuration, char lidarliteAddress)
 
     Selects one of several preset configurations.
@@ -258,18 +184,18 @@ void setup()
     Parameters
     ----------------------------------------------------------------------------
     configuration:  Default 0.
-      0: Default mode, balanced performance.
-      1: Short range, high speed. Uses 0x1d maximum acquisition count.
-      2: Default range, higher speed short range. Turns on quick termination
-          detection for faster measurements at short range (with decreased
-          accuracy)
-      3: Maximum range. Uses 0xff maximum acquisition count.
-      4: High sensitivity detection. Overrides default valid measurement detection
-          algorithm, and uses a threshold value for high sensitivity and noise.
-      5: Low sensitivity detection. Overrides default valid measurement detection
-          algorithm, and uses a threshold value for low sensitivity and noise.
+    0: Default mode, balanced performance.
+    1: Short range, high speed. Uses 0x1d maximum acquisition count.
+    2: Default range, higher speed short range. Turns on quick termination
+        detection for faster measurements at short range (with decreased
+        accuracy)
+    3: Maximum range. Uses 0xff maximum acquisition count.
+    4: High sensitivity detection. Overrides default valid measurement detection
+        algorithm, and uses a threshold value for high sensitivity and noise.
+    5: Low sensitivity detection. Overrides default valid measurement detection
+        algorithm, and uses a threshold value for low sensitivity and noise.
     lidarliteAddress: Default 0x62. Fill in new address here if changed. See
-      operating manual for instructions.
+    operating manual for instructions.
   */
   myLidarLite.configure(0); // Change this number to try out alternate configurations
 }
