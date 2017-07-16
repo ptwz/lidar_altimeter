@@ -30,9 +30,29 @@
 #include "30.h"
 #include "40.h"
 #include "50.h"
-//#include "100.h"
+#include "100.h"
 
 LIDARLite myLidarLite;
+/*
+  Selects one of several preset configurations.
+
+  Parameters
+  ----------------------------------------------------------------------------
+  configuration:  Default 0.
+  0: Default mode, balanced performance.
+  1: Short range, high speed. Uses 0x1d maximum acquisition count.
+  2: Default range, higher speed short range. Turns on quick termination
+      detection for faster measurements at short range (with decreased
+      accuracy)
+  3: Maximum range. Uses 0xff maximum acquisition count.
+  4: High sensitivity detection. Overrides default valid measurement detection
+      algorithm, and uses a threshold value for high sensitivity and noise.
+  5: Low sensitivity detection. Overrides default valid measurement detection
+      algorithm, and uses a threshold value for low sensitivity and noise.
+  lidarliteAddress: Default 0x62. Fill in new address here if changed. See
+  operating manual for instructions.
+*/
+#define LIDAR_CONFIG 3
 
 volatile uint16_t audio_count = 0; // Current offset into sample
 uint16_t audio_len = 0; // Maximum offset until which we want to play back
@@ -40,29 +60,29 @@ uint8_t *audio_data = NULL; // Pointer which to play from, assumed to be in FLAS
 unsigned int altitude; // Current altitude in centimeter
 byte announced_feet = 0; // Last announced altitude, used when determining if a callout is needed
 
-/* Feeds audio data from the pointers into the PWM module */ 
+/* Feeds audio data from the pointers into the PWM module */
 void audio_callback() {
   audio_count = (audio_count + 1);
   if (audio_count >= audio_len) {
     /* When nothing left to play, return to PWM level of 128,
-     * which is the idle level of unsigned eight bit audio.
-     * Reset the counters, too.
-     */
+       which is the idle level of unsigned eight bit audio.
+       Reset the counters, too.
+    */
     audio_count = 0;
     audio_len = 0;
     if (OCR2B > 128)
       OCR2B -= 1;
-    if (OCR2B > 128)
+    if (OCR2B < 128)
       OCR2B += 1;
   } else
     OCR2B = pgm_read_byte(&audio_data[audio_count]);
 }
 
 /** Tries to say a number.
- * If number is not available, just skip it.
- */
+   If number is not available, just skip it.
+*/
 void say(byte number) {
-  
+
   switch (number) {
     case 1:
       audio_data = __1_u8;
@@ -113,20 +133,47 @@ void say(byte number) {
       audio_data = __50_u8;
       audio_len = __50_u8_len;
       break;
-
-      /*    case 100:
-            audio_data = __100_u8;
-            audio_len = __100_u8_len;
-            break;
-      */
+/*
+    case 100:
+      audio_data = __100_u8;
+      audio_len = __100_u8_len;
+      break;
+*/
   }
 }
 
 
 void loop() {
-  delay(250);
-  // Get distance in cm
-  unsigned int distance = myLidarLite.distance();
+#define MAX_MEASURES 10
+  static unsigned int distances[MAX_MEASURES];
+  byte value_count = 0;
+  byte count_max = 0;
+  unsigned long until = millis() + 250;
+
+  while (millis() < until) {
+    // Sleep after getting MAX_MEASURES
+    if (value_count == MAX_MEASURES)
+      continue;
+    // Otherwise (not enough points) try to get more.
+
+    // get distance in cm
+    unsigned int distance = myLidarLite.distance();
+    // Only work with plausible values over 5 cm and below 50m
+    if ( (distance > 5) && (distance < 5000) ) {
+      value_count += 1;
+      if (value_count > MAX_MEASURES)
+        value_count = 0;
+      if (count_max < value_count)
+        count_max = value_count;
+      distances[value_count] = distance;
+    }
+  }
+  unsigned long tmp = 0;
+  for (byte i = 0; i < count_max; i++) {
+    tmp += distances[i];
+  }
+  tmp /= count_max;
+  unsigned int distance = tmp;
   /* If out of range, it returns very low distances. Disregard, then */
   if (distance > 5)
   {
@@ -175,29 +222,9 @@ void setup()
 
   pinMode(3, OUTPUT);
   Serial.begin(9600);
-  myLidarLite.begin(3, true); // Set configuration to default and I2C to 400 kHz
-  /*
-    configure(int configuration, char lidarliteAddress)
+  myLidarLite.begin(LIDAR_CONFIG, true); // Set configuration and I2C to 400 kHz
 
-    Selects one of several preset configurations.
-
-    Parameters
-    ----------------------------------------------------------------------------
-    configuration:  Default 0.
-    0: Default mode, balanced performance.
-    1: Short range, high speed. Uses 0x1d maximum acquisition count.
-    2: Default range, higher speed short range. Turns on quick termination
-        detection for faster measurements at short range (with decreased
-        accuracy)
-    3: Maximum range. Uses 0xff maximum acquisition count.
-    4: High sensitivity detection. Overrides default valid measurement detection
-        algorithm, and uses a threshold value for high sensitivity and noise.
-    5: Low sensitivity detection. Overrides default valid measurement detection
-        algorithm, and uses a threshold value for low sensitivity and noise.
-    lidarliteAddress: Default 0x62. Fill in new address here if changed. See
-    operating manual for instructions.
-  */
-  myLidarLite.configure(0); // Change this number to try out alternate configurations
+  myLidarLite.configure(LIDAR_CONFIG);
 }
 
 
