@@ -54,6 +54,9 @@ LIDARLite myLidarLite;
 */
 #define LIDAR_CONFIG 3
 
+/* Sets, how many readings will be taken each burst */
+#define MAX_MEASURES 15
+
 volatile uint16_t audio_count = 0; // Current offset into sample
 uint16_t audio_len = 0; // Maximum offset until which we want to play back
 uint8_t *audio_data = NULL; // Pointer which to play from, assumed to be in FLASH
@@ -133,33 +136,47 @@ void say(byte number) {
       audio_data = __50_u8;
       audio_len = __50_u8_len;
       break;
-/*
-    case 100:
-      audio_data = __100_u8;
-      audio_len = __100_u8_len;
-      break;
-*/
+      /*
+          case 100:
+            audio_data = __100_u8;
+            audio_len = __100_u8_len;
+            break;
+      */
   }
 }
 
+int cmp_func(const unsigned int *a, const unsigned int *b)
+{
+  signed long x = *a;
+  x -= *b;
+  if (x > 0)
+    return (1);
+
+  if (x < 0)
+    return (-1);
+
+  if (x == 0)
+    return (0);
+}
 
 void loop() {
-#define MAX_MEASURES 10
+
   static unsigned int distances[MAX_MEASURES];
   byte value_count = 0;
   byte count_max = 0;
-  unsigned long until = millis() + 250;
+  unsigned long until = millis() + 333;
+  unsigned median;
 
   while (millis() < until) {
     // Sleep after getting MAX_MEASURES
     if (value_count == MAX_MEASURES)
       continue;
-    // Otherwise (not enough points) try to get more.
 
-    // get distance in cm
+    // Otherwise (not enough points) try to get more:
+    // first get distance in cm
     unsigned int distance = myLidarLite.distance();
-    // Only work with plausible values over 5 cm and below 50m
-    if ( (distance > 5) && (distance < 5000) ) {
+    // Only work with plausible values over 10cm and below 50m
+    if ( (distance > 10) && (distance < 5000) ) {
       value_count += 1;
       if (value_count > MAX_MEASURES)
         value_count = 0;
@@ -168,20 +185,33 @@ void loop() {
       distances[value_count] = distance;
     }
   }
-  unsigned long tmp = 0;
+  // Median
+  qsort(distances, count_max, sizeof(distances[count_max]), cmp_func);
+  median = distances[1];
+  // Average
+  unsigned long average = 0;
   for (byte i = 0; i < count_max; i++) {
-    tmp += distances[i];
+    average += distances[i];
+    Serial.print(distances[i]);
+    Serial.print(" ");
   }
-  tmp /= count_max;
-  unsigned int distance = tmp;
+  average /= count_max;
+
+  // If too little measurements where taken, do not consider this round
+  if (count_max < ((MAX_MEASURES) / 3) )
+    return;
+
+  unsigned int distance = median;
   /* If out of range, it returns very low distances. Disregard, then */
   if (distance > 5)
   {
     altitude = (altitude + distance) >> 1;
-    unsigned int feet = altitude;
-    feet *= 100;
-    feet /= 3048;
+    unsigned long int feet = altitude;
+    feet *= 100L;
+    feet /= 3048L;
     Serial.print(altitude);
+    Serial.print(" ");
+    Serial.print(distance);
     Serial.print(" ");
     Serial.println(feet);
     if ((feet != announced_feet) && (audio_len == 0))  {
