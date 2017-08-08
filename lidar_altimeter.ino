@@ -177,12 +177,12 @@ void loop() {
     unsigned int distance = myLidarLite.distance();
     // Only work with plausible values over 10cm and below 50m
     if ( (distance > 10) && (distance < 5000) ) {
-      value_count += 1;
       if (value_count > MAX_MEASURES)
         value_count = 0;
       if (count_max < value_count)
         count_max = value_count;
       distances[value_count] = distance;
+      value_count += 1;
     }
   }
   // Median
@@ -197,9 +197,14 @@ void loop() {
   }
   average /= count_max;
 
-  // If too little measurements where taken, do not consider this round
-  if (count_max < ((MAX_MEASURES) / 3) )
+  // If too few measurements where taken, do not consider this round
+  // as we did a sort(), we can be sure the values before where zeroes, too.
+  if (  distances[3] == 0 )
+  {
+    // If no Ground detection, sleep for half a second, then retry.
+    delay(500);
     return;
+  }
 
   unsigned int distance = median;
   /* If out of range, it returns very low distances. Disregard, then */
@@ -251,7 +256,7 @@ void setup()
   Timer1.attachInterrupt(audio_callback);
 
   pinMode(3, OUTPUT);
-  Serial.begin(9600);
+  Serial.begin(115200);
   myLidarLite.begin(LIDAR_CONFIG, true); // Set configuration and I2C to 400 kHz
 
   myLidarLite.configure(LIDAR_CONFIG);
