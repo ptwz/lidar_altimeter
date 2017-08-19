@@ -160,11 +160,10 @@ int cmp_func(const unsigned int *a, const unsigned int *b)
 }
 
 void loop() {
-
   static unsigned int distances[MAX_MEASURES];
-  byte value_count = 0;
-  byte count_max = 0;
-  unsigned long until = millis() + 333;
+  byte value_count = 0; // Number of values stored
+  byte count_max = 0;   // Maximum buffer array index, may wrap around
+  unsigned long until = millis() + 333; // Duration of one measurement burst
   unsigned median;
 
   while (millis() < until) {
@@ -185,17 +184,8 @@ void loop() {
       value_count += 1;
     }
   }
-  // Median
+  // Sort data for processing
   qsort(distances, count_max, sizeof(distances[count_max]), cmp_func);
-  median = distances[1];
-  // Average
-  unsigned long average = 0;
-  for (byte i = 0; i < count_max; i++) {
-    average += distances[i];
-    Serial.print(distances[i]);
-    Serial.print(" ");
-  }
-  average /= count_max;
 
   // If too few measurements where taken, do not consider this round
   // as we did a sort(), we can be sure the values before where zeroes, too.
@@ -206,7 +196,7 @@ void loop() {
     return;
   }
 
-  unsigned int distance = median;
+  unsigned int distance = distances[3];
   /* If out of range, it returns very low distances. Disregard, then */
   if (distance > 5)
   {
@@ -233,7 +223,6 @@ void setup()
 
   // Set up Timer 2 to do pulse width modulation on the speaker
   // pin.
-
   // Use internal clock (datasheet p.160)
   ASSR &= ~(_BV(EXCLK) | _BV(AS2));
 
@@ -249,13 +238,10 @@ void setup()
   TCCR2B = (TCCR2B & ~(_BV(CS12) | _BV(CS11))) | _BV(CS10);
 
   // Set up sound sample feeding timer interrupt.
-
   audio_count = 0;
-
   Timer1.initialize(125 * 2);
   Timer1.attachInterrupt(audio_callback);
 
-  pinMode(3, OUTPUT);
   Serial.begin(115200);
   myLidarLite.begin(LIDAR_CONFIG, true); // Set configuration and I2C to 400 kHz
 
