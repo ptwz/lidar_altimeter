@@ -90,12 +90,14 @@ void say(byte number) {
 
   while ( (number != announced_feet ) && (miss == 1) )
   {
-    number += dir;
+    Serial.println(number);
     miss = 0;
+
     switch (number) {
       default:
         miss = 1;
         break;
+
       case 1:
         audio_data = __1_u8;
         audio_len = __1_u8_len;
@@ -152,8 +154,15 @@ void say(byte number) {
               break;
         */
     }
+    if (miss == 0)
+      announced_feet = number;
+
+    if ( (dir < 0) && (number < announced_feet) )
+      miss = 0;
+    if ( (dir > 0) && (number >  announced_feet) )
+      miss = 0;
+    number += dir;
   }
-  announced_feet = number;
 }
 
 int cmp_func(const unsigned int *a, const unsigned int *b)
@@ -224,6 +233,8 @@ void loop() {
     feet *= 100L;
     feet /= 3048L;
     Serial.print(altitude);
+    Serial.print(" ");
+    Serial.print(announced_feet);
     Serial.print(" ");
     Serial.print(distance);
     Serial.print(" ");
