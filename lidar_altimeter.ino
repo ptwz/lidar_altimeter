@@ -85,64 +85,75 @@ void audio_callback() {
    If number is not available, just skip it.
 */
 void say(byte number) {
+  signed char dir = (number > announced_feet) ? -1 : 1;
+  byte miss = 1;
 
-  switch (number) {
-    case 1:
-      audio_data = __1_u8;
-      audio_len = __1_u8_len;
-      break;
+  while ( (number != announced_feet ) && (miss == 1) )
+  {
+    number += dir;
+    miss = 0;
+    switch (number) {
+      default:
+        miss = 1;
+        break;
+      case 1:
+        audio_data = __1_u8;
+        audio_len = __1_u8_len;
+        break;
 
-    case 2:
-      audio_data = __2_u8;
-      audio_len = __2_u8_len;
-      break;
+      case 2:
+        audio_data = __2_u8;
+        audio_len = __2_u8_len;
+        break;
 
-    case 3:
-      audio_data = __3_u8;
-      audio_len = __3_u8_len;
-      break;
+      case 3:
+        audio_data = __3_u8;
+        audio_len = __3_u8_len;
+        break;
 
-    case 4:
-      audio_data = __4_u8;
-      audio_len = __4_u8_len;
-      break;
+      case 4:
+        audio_data = __4_u8;
+        audio_len = __4_u8_len;
+        break;
 
-    case 5:
-      audio_data = __5_u8;
-      audio_len = __5_u8_len;
-      break;
+      case 5:
+        audio_data = __5_u8;
+        audio_len = __5_u8_len;
+        break;
 
-    case 10:
-      audio_data = __10_u8;
-      audio_len = __10_u8_len;
-      break;
+      case 10:
+        audio_data = __10_u8;
+        audio_len = __10_u8_len;
+        break;
 
-    case 20:
-      audio_data = __20_u8;
-      audio_len = __20_u8_len;
-      break;
+      case 20:
+        audio_data = __20_u8;
+        audio_len = __20_u8_len;
+        break;
 
-    case 30:
-      audio_data = __30_u8;
-      audio_len = __30_u8_len;
-      break;
+      case 30:
+        audio_data = __30_u8;
+        audio_len = __30_u8_len;
+        break;
 
-    case 40:
-      audio_data = __40_u8;
-      audio_len = __40_u8_len;
-      break;
+      case 40:
+        audio_data = __40_u8;
+        audio_len = __40_u8_len;
+        break;
 
-    case 50:
-      audio_data = __50_u8;
-      audio_len = __50_u8_len;
-      break;
-      /*
-          case 100:
-            audio_data = __100_u8;
-            audio_len = __100_u8_len;
-            break;
-      */
+      case 50:
+        audio_data = __50_u8;
+        audio_len = __50_u8_len;
+        break;
+        /*
+            case 100:
+              audio_data = __100_u8;
+              audio_len = __100_u8_len;
+              break;
+        */
+    }
   }
+  announced_feet = number;
 }
 
 int cmp_func(const unsigned int *a, const unsigned int *b)
@@ -166,14 +177,17 @@ void loop() {
   unsigned long until = millis() + 333; // Duration of one measurement burst
   unsigned median;
 
+  memset(distances, 0, sizeof(distances));
   while (millis() < until) {
     // Sleep after getting MAX_MEASURES
     if (value_count == MAX_MEASURES)
       continue;
 
+
     // Otherwise (not enough points) try to get more:
     // first get distance in cm
     unsigned int distance = myLidarLite.distance();
+
     // Only work with plausible values over 10cm and below 50m
     if ( (distance > 10) && (distance < 5000) ) {
       if (value_count > MAX_MEASURES)
@@ -184,8 +198,13 @@ void loop() {
       value_count += 1;
     }
   }
+
   // Sort data for processing
   qsort(distances, count_max, sizeof(distances[count_max]), cmp_func);
+
+#ifdef DEBUG
+  for (byte x = 0; x < count_max; x++)    Serial.println(distances[x]);
+#endif
 
   // If too few measurements where taken, do not consider this round
   // as we did a sort(), we can be sure the values before where zeroes, too.
@@ -196,7 +215,7 @@ void loop() {
     return;
   }
 
-  unsigned int distance = distances[3];
+  unsigned int distance = distances[2];
   /* If out of range, it returns very low distances. Disregard, then */
   if (distance > 5)
   {
@@ -211,7 +230,6 @@ void loop() {
     Serial.println(feet);
     if ((feet != announced_feet) && (audio_len == 0))  {
       say(feet);
-      announced_feet = feet;
     }
   }
 }
