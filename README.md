@@ -12,10 +12,11 @@ This will give you a "tabletop" prototype. Proper hardware design follows.
 ## Software
 1. Arduino IDE
 2. The LIDAR Lite v3 library for Arduino (https://github.com/garmin/LIDARLite\_v3\_Arduino\_Library)
+3. Arduino Talkie library https://github.com/PaulStoffregen/Talkie/tree/a9949755da3713dee2625cbedb227cd8fd4308b6 (This is the version that I found worked best)
 Optional (for creating own sound samples):
 1. MacOS X "say" command
 2. SOX (Sound Exchange)
-3. xxd (From the VIM package)
+3. BlueWizard (https://github.com/patrick99e99/BlueWizard) to create new LPC streams from audio samples
 
 # Build it
 ```   
