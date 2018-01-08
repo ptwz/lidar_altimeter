@@ -6,9 +6,7 @@
 # by the computer.
 #
 # This needs the MacOS "say" command, or some replacement for it
-# on other platforms. SOX and xxd from the VIM package
+# on other platforms. SOX and python_wizard, my BlueWizard port to python
 say $1 -o $1.aiff
-sox $1.aiff -b 4 -r 4e3   -b 8  $1.u8 gain -n
-sox $1.aiff -r 8e3 -c 1 -b 16  $1.aif gain -n channels 1
-xxd -i $1.u8 > $1.h
-
+sox $1.aiff $1.wav
+python_wizard -w 2 -S -p -a -1 -m 0.7 -u .5 -F 25 -f arduino $1.wav > $1.h
