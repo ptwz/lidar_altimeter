@@ -95,6 +95,8 @@ void say(byte number) {
   signed int dir = (announced_feet - number) > 0 ? 1 : -1;
 
   while (1) {
+    if (number == announced_feet)
+      return;
     switch (number) {
       case 0:
         //voice.say(spZERO);
@@ -215,14 +217,14 @@ void loop() {
 
   // If too few measurements where taken, do not consider this round
   // as we did a sort(), we can be sure the values before where zeroes, too.
-  if (  distances[3] == 0 )
+  if (  distances[MAX_MEASURES/2] == 0 )
   {
     // If no Ground detection, sleep for half a second, then retry.
     delay(500);
     return;
   }
 
-  unsigned int distance = distances[2];
+  unsigned int distance = distances[MAX_MEASURES/2+2];
   /* If out of range, it returns very low distances. Disregard, then */
   if (distance <= 5)
     return;
